@@ -117,8 +117,8 @@ public:
         wxFrame(NULL, wxID_ANY, "Searcher", wxDefaultPosition, wxSize(600, 600))
     {
         parent_ = new wxPanel(this, wxID_ANY);
-        input_ = new wxTextCtrl(parent_, 1, wxT(""), wxPoint(100, 100));
-        result_ = new wxTextCtrl(parent_, -1, wxT(""), wxPoint(100, 150), wxSize(200, 400), wxTE_MULTILINE);
+        input_ = new wxTextCtrl(parent_, 1, wxT(""), wxPoint(100, 100), wxSize(200, wxDefaultCoord));
+        result_ = new wxTextCtrl(parent_, -1, wxT(""), wxPoint(100, 150), wxSize(400, 400), wxTE_MULTILINE);
 
         Connect(1, wxEVT_TEXT, wxCommandEventHandler(SearcherFrame::OnTextChange));
         Connect(wxEVT_THREAD, wxCommandEventHandler(SearcherFrame::OnThreadEvent));
