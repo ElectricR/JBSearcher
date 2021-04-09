@@ -15,8 +15,10 @@ class SearcherFrame;
 
 void SearcherRoutine(SearchHandler &handler);
 
+//Class for data exchange and thread handling
 class SearchHandler {
 public:
+    // Creates thread upon creation
     SearchHandler(SearcherFrame *frame):
         frame_(frame),
         th_(std::thread(SearcherRoutine, std::ref(*this)))
@@ -30,12 +32,13 @@ public:
         th_.join();
     }
 
+    // Assign new input from input test field
     void set_input(std::string&& str) {
         std::unique_lock ul(m_);
         input_changed_ = true;
         input_string_ = std::move(str);
-        seq_out_string_.clear();
-        nonseq_out_string_.clear();
+        cons_out_string_.clear();
+        noncons_out_string_.clear();
         cv_.notify_one();
     }
 
@@ -44,13 +47,15 @@ public:
         return input_string_;
     }
 
+    // Combine consecutive and nonconsecutive results
+    // in order to write it to GUI buffer
     void flush_output(std::string& str) {
         std::unique_lock ul(m_);
-        str.swap(seq_out_string_);
+        str.swap(cons_out_string_);
         if (str.size()) {
             str += "----------------\n";
         }
-        str += std::move(nonseq_out_string_);
+        str += std::move(noncons_out_string_);
     }
     
     void unsafe_set_output(std::string&&, std::string&&);
@@ -62,15 +67,21 @@ public:
 private:
     SearcherFrame *frame_;
     std::string input_string_;
-    std::string seq_out_string_;
-    std::string nonseq_out_string_;
-    std::thread th_;
+    std::string cons_out_string_; // Words with consecutive pattern matching
+    std::string noncons_out_string_; //Words with nonconsecutive pattern matching
+    std::thread th_; // Searcher thread
 };
 
 
-
+// Main function for searcher thread
+// 
+// Reads dictionary from disk
+// Then pattern from SearchHandler and calculates if 
+// pattern is consecutive or nonconsecutive substring of each word
+//
 void SearcherRoutine(SearchHandler &handler) {
     while (!handler.quit_called_) {
+        // Handle disk input
         std::ifstream ifs("dict.txt");
         std::vector<std::string> words;
         std::string s;
@@ -86,22 +97,29 @@ void SearcherRoutine(SearchHandler &handler) {
         if (handler.input_changed_) {
             std::string pattern = handler.unsafe_get_input();
             ul.unlock();
+
+            // Check only >2 symbol patterns
             if (pattern.size() > 1) {
-                std::string seq_out_string;
-                std::string nonseq_out_string;
-                std::vector<bool> seq = algo::KnuthMorrisPratt(pattern, con_str);
-                std::vector<bool> nonseq = algo::nonsequencial_substring_algorithm(pattern, con_str);
+                std::string cons_out_string;
+                std::string noncons_out_string;
+
+                // Apply two algorithms
+                std::vector<bool> cons = algo::KnuthMorrisPratt(pattern, con_str);
+                std::vector<bool> noncons = algo::nonconsecutive_substring_algorithm(pattern, con_str);
+                // Write consecutive and nonconsecutive substrings to separated buffers
                 for (size_t i = 0; i != words.size(); ++i) {
-                    if (seq[i]) {
-                        seq_out_string += std::move(words[i] + '\n');
+                    if (cons[i]) {
+                        cons_out_string += std::move(words[i] + '\n');
                     }
-                    else if (nonseq[i]) {
-                        nonseq_out_string += std::move(words[i] + '\n');
+                    else if (noncons[i]) {
+                        noncons_out_string += std::move(words[i] + '\n');
                     }
                 }
+
+                // Dump calculations
                 ul.lock();
                 if (!handler.input_changed_) {
-                    handler.unsafe_set_output(std::move(seq_out_string), std::move(nonseq_out_string));
+                    handler.unsafe_set_output(std::move(cons_out_string), std::move(noncons_out_string));
                 }
                 ul.unlock();
             }
@@ -109,6 +127,7 @@ void SearcherRoutine(SearchHandler &handler) {
     }
 }
 
+// UI frame for managing input and output
 class SearcherFrame:
     public wxFrame
 {
@@ -128,6 +147,7 @@ public:
         handler_ = std::make_unique<SearchHandler>(this);
     }
 
+    // Input bar text change handling
     void OnTextChange(wxCommandEvent &) {
         std::string str = input_->GetValue().ToStdString();
         if (str.size() > 1) {
@@ -139,6 +159,7 @@ public:
         handler_->set_input(std::move(str));
     }
 
+    // Finish calculation event handling
     void OnThreadEvent(wxCommandEvent &) {
         std::string str;
         handler_->flush_output(str);
@@ -153,12 +174,13 @@ private:
 };
 
 
-void SearchHandler::unsafe_set_output(std::string&& seq, std::string&& nonseq) {
-    seq_out_string_ = std::move(seq);
-    nonseq_out_string_ = std::move(nonseq);
+void SearchHandler::unsafe_set_output(std::string&& cons, std::string&& noncons) {
+    cons_out_string_ = std::move(cons);
+    noncons_out_string_ = std::move(noncons);
     wxQueueEvent(frame_, new wxThreadEvent);
 }
 
+// WX main app
 class SearcherApp:
     public wxApp
 {
