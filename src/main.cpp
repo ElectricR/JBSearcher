@@ -92,8 +92,10 @@ void SearcherRoutine(SearchHandler &handler) {
         }
         ifs.close();
         
+        // Sleep if there is no work to do
         std::unique_lock ul(handler.m_);
         handler.cv_.wait(ul, [&] { return handler.quit_called_ || handler.input_changed_; });
+        
         if (handler.input_changed_) {
             std::string pattern = handler.unsafe_get_input();
             ul.unlock();
